@@ -15,5 +15,8 @@ before_script:
   - ./cc-test-reporter before-build
 script:
  - pytest --cov-report xml --cov=omc3 tests/unit tests/accuracy
+ - travis-sphinx build --source=doc/ --nowarn
 after_script:
   - ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
+after_success:
+ - travis-sphinx deploy
