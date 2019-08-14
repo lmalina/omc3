@@ -1,11 +1,10 @@
 env:
   global:
-    - CC_TEST_REPORTER_ID=ddd9a311ee312287c63200b8ab887053bb39bae63f4cc15b1a873f9ac3fee7cf
+    - CC_TEST_REPORTER_ID=b2b9246d8ddc35c6ddd5c683518cd97e3eab506d9f56f16194af7092537229b7
 language: python
 email:
     recipients:
       - lmalina@cern.ch
-      - jcoellod@cern.ch
     on_success: always
     on_failure: always
 python:
