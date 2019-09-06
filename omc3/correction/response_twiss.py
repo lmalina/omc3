@@ -107,7 +107,7 @@ Also :math:`\Delta \Phi_{z,wj}` needs to be multiplied by :math:`2\pi` to be con
 import numpy as np
 import pandas as pd
 import tfs
-from correction.fullresponse.sequence_evaluation import check_varmap_file
+from correction.sequence_evaluation import check_varmap_file
 from twiss_optics.twiss_functions import get_phase_advances, tau, dphi
 from twiss_optics.twiss_functions import upper
 from utils import logging_tools as logtool

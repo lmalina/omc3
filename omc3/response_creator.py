@@ -9,19 +9,13 @@ import pickle
 from model import manager
 from utils import logging_tools
 from generic_parser.entrypoint import EntryPointParameters, entrypoint
-from correction.fullresponse import response_madx, response_twiss
-from global_correct_iterative import CORRECTION_DEFAULTS
+from correction import response_madx, response_twiss
+from global_correct import CORRECTION_DEFAULTS
 
 LOG = logging_tools.get_logger(__name__)
 
-DEFAULT_PATTERNS = {
-    "job_content": "%JOB_CONTENT%",  # used in lhc_model_creator, sequence_evaluation
-    "twiss_columns": "%TWISS_COLUMNS%",  # used in lhc_model_creator, sequence_evaluation
-    "element_pattern": "%ELEMENT_PATTERN%",  # used in lhc_model_creator, sequence_evaluation
-}
 
-
-def get_params():
+def response_params():
     params = EntryPointParameters()
     params.add_parameter(flags="--creator", name="creator", type=str, choices=("madx", "twiss"),
                          default="madx", help="Create either with madx or analytically from twiss file.")
@@ -37,8 +31,8 @@ def get_params():
     return params
 
 
-@entrypoint(get_params())
-def create_response(opt, other_opt):
+@entrypoint(response_params())
+def create_response_entrypoint(opt, other_opt):
     """ Entry point for creating pandas-based response matrices.
 
     The response matrices can be either created by response_madx or TwissResponse.
@@ -90,4 +84,4 @@ def create_response(opt, other_opt):
 
 
 if __name__ == "__main__":
-    create_response()
+    create_response_entrypoint()
