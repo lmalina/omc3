@@ -34,36 +34,6 @@ def get_all_rdts(n):
     return ['F{:d}{:d}{:d}{:d}'.format(j, k, l, m) for j, k, l, m in sorted(permut, key=sum)]
 
 
-def rdt_generator(orders, normal=True, skew=True, complex_conj=True):
-    """ Generates lists of RDT-4-tuples sorted into a dictionary by order.
-
-    Args:
-        orders (list): list of orders to be generated. Orders < 2 raise errors.
-        normal (bool): calculate normal RDTs (default: True)
-        skew (bool): calculate skew RDTs (default: True)
-        complex_conj (bool): Have both, RDT and it's complex conjugate RDT in the list
-                            (default: True)
-
-    Returns:
-        Dictionary with keys of orders containing lists of 4-Tuples for the RDTs of that order.
-    """
-    if not all([n > 1 for n in orders]):
-        ValueError("All order must be greater 1 for resonance driving terms.")
-
-    if not normal or skew:
-        ValueError("Either 'normal' or 'skew' must be activated")
-
-    permut = {o: [] for o in orders}
-    for x in itertools.product(range(max(orders) + 1), repeat=4):
-        order = sum(x)
-        if ((order in orders)  # check for order
-            and not (x[0] == x[1] and x[2] == x[3])  # rdt index rule
-            and ((skew and sum(x[2:4]) % 2) or (normal and not sum(x[2:4]) % 2))  # skew or normal
-            and (complex_conj or not((x[1], x[0], x[3], x[2]) in permut[order]))  # filter conj
-        ):
-            permut[order].append(x)
-    return permut
-
 
 # Phase Advance Functions ######################################################
 

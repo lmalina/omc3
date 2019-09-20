@@ -1,8 +1,6 @@
 from collections import defaultdict
-
 import numpy as np
 from correction.constants import MODEL, DIFF, VALUE
-from global_correct import LOG
 from utils import logging_tools
 LOG = logging_tools.get_logger(__name__)
 

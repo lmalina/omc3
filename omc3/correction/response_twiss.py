@@ -112,7 +112,7 @@ from twiss_optics.twiss_functions import get_phase_advances, tau, dphi
 from twiss_optics.twiss_functions import upper
 from utils import logging_tools as logtool
 from utils.contexts import timeit
-
+import pickle
 LOG = logtool.get_logger(__name__)
 
 DUMMY_ID = "DUMMY_PLACEHOLDER"
@@ -797,39 +797,6 @@ class TwissResponse(object):
 
 
 # Associated Functions #########################################################
-
-
-def get_delta(response, delta_k):
-    """ Returns the deltas of :math:`response_matrix \cdot delta_k`.
-
-    Args:
-        response: Response dictionary
-        delta_k: Pandas Series of variables and their delta-value
-
-    Returns:
-        TFS_DataFrame with elements as indices and the calculated deltas in the columns
-    """
-    delta_df = tfs.TfsDataFrame(None, index=response.index)
-    for col in response.keys():
-        # equivalent to .dot() but more efficient as delta_k is "sparse"
-        if col == "Q":
-            try:
-                delta_q = (response[col].loc[:, delta_k.index] * delta_k
-                           ).dropna(axis="columns").sum(axis="columns")
-            except KeyError:
-                # none of the delta_k are in DataFrame
-                delta_q = pd.Series([0., 0.], index=["Q1", "Q2"])
-            delta_df.headers["QX"] = delta_q["Q1"]
-            delta_df.headers["QY"] = delta_q["Q2"]
-        else:
-            try:
-                delta_df.loc[:, col] = (response[col].loc[:, delta_k.index] * delta_k
-                                        ).dropna(axis="columns").sum(axis="columns")
-            except KeyError:
-                # none of the delta_k are in DataFrame
-                delta_df.loc[:, col] = 0.
-    return delta_df
-
 
 def response_add(*args):
     """ Merges two or more Response Matrix DataFrames """
