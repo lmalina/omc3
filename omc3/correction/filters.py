@@ -2,18 +2,16 @@ from collections import defaultdict
 import numpy as np
 import tfs
 from correction.constants import VALUE, ERROR, ERR, WEIGHT, DELTA
-from global_correct import LOG
 from utils import stats, logging_tools
 LOG = logging_tools.get_logger(__name__)
 
 
-def filter_measurement(keys, meas, model, errorbar, w_dict, e_dict, m_dict):
+def filter_measurement(keys, meas, model, opt):
     """ Filters measurements and renames columns to VALUE, ERROR, WEIGHT"""
     filters = _get_measurement_filters()
     new = dict.fromkeys(keys)
     for key in keys:
-        new[key] = filters[key](key, meas[key], model, errorbar, w_dict[key],
-                                modelcut=m_dict[key], errorcut=e_dict[key])
+        new[key] = filters[key](key, meas[key], model, opt)
     return new
 
 
@@ -21,20 +19,20 @@ def _get_measurement_filters():
     return defaultdict(lambda: _get_filtered_generic, {'Q': _get_tunes})
 
 
-def _get_filtered_generic(key, meas, model, erwg, weight, modelcut, errorcut):
+def _get_filtered_generic(key, meas, model, opt):
     common_bpms = meas.index.intersection(model.index)
     meas = meas.loc[common_bpms, :]
     new = tfs.TfsDataFrame(index=common_bpms)
     col = key if "MU" not in key else f"PHASE{key[-1]}"
     new[VALUE] = meas.loc[:, col].values
     new[ERROR] = meas.loc[:, f"{ERR}{col}"].values
-    new[WEIGHT] = _get_errorbased_weights(key, weight, meas.loc[:, f"{ERR}{DELTA}{col}"]) if erwg else weight
+    new[WEIGHT] = (_get_errorbased_weights(key, opt.weights[key], meas.loc[:, f"{ERR}{DELTA}{col}"])
+                   if opt.use_errorbars else opt.weights[key])
     # filter cuts
-    error_filter = meas.loc[:, f"{ERR}{DELTA}{col}"].values < errorcut
-    model_filter = np.abs(meas.loc[:, f"{DELTA}{col}"].values) < modelcut
-    if False:  # TODO automated model cut
-        model_filter = get_smallest_data_mask(np.abs(meas.loc[:, f"{DELTA}{col}"].values),
-                                              portion=0.95)
+    error_filter = meas.loc[:, f"{ERR}{DELTA}{col}"].values < opt.errorcut[key]
+    model_filter = np.abs(meas.loc[:, f"{DELTA}{col}"].values) < opt.modelcut[key]
+    if opt.automatic_model_cut:  # TODO automated model cut
+        model_filter = _get_smallest_data_mask(np.abs(meas.loc[:, f"{DELTA}{col}"].values), portion=0.95)
     if "MU" in key:
         new['NAME2'] = meas.loc[:, 'NAME2'].values
         second_bpm_in = np.in1d(new.loc[:, 'NAME2'].values, new.index.values)
@@ -46,9 +44,9 @@ def _get_filtered_generic(key, meas, model, erwg, weight, modelcut, errorcut):
     return new.loc[good_bpms, :]
 
 
-def _get_tunes(key, meas, model, erwg, weight, modelcut, errorcut):
-    meas[WEIGHT] = weight
-    if erwg:
+def _get_tunes(key, meas, model, opt):
+    meas[WEIGHT] = opt.weights[key]
+    if opt.use_errorbars:
         meas[WEIGHT] = _get_errorbased_weights(key, meas[WEIGHT], meas[ERROR])
     LOG.debug(f"Number of tune measurements: {len(meas.index.values)}")
     return meas
@@ -97,7 +95,7 @@ def _get_tune_response(resp, meas):
     return resp
 
 
-def get_smallest_data_mask(data, portion=0.95):
+def _get_smallest_data_mask(data, portion=0.95):
     if not 0 <= portion <= 1:
         raise ValueError("Portion of data has to be between 0 and 1")
     b = int(len(data) * portion)

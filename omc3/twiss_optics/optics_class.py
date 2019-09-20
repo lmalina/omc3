@@ -115,17 +115,6 @@ class TwissOptics(object):
         results_df["S"] = self.twiss_df["S"]
         return results_df
 
-    def define_plot_style(self, **kwargs):
-        """ Edit your desired plot style here """
-        if not kwargs:
-            options = DotDict(PLOT_DEFAULTS)
-        else:
-            options = DotDict(kwargs)
-            if "style" not in options:
-                options.style = PLOT_DEFAULTS["style"]
-            if "manual" not in options:
-                options.manual = PLOT_DEFAULTS["manual"]
-        self._plot_options = options
 
     ################################
     #         Properties
@@ -228,18 +217,6 @@ class TwissOptics(object):
 
         self._log_added('GAMMA_C', 'F1001_C', 'F1010_C', 'C11', 'C12', 'C21', 'C22')
 
-    def get_gamma(self):
-        """ Return Gamma values. """
-        if 'GAMMA_C' not in self._results_df:
-            self.calc_cmatrix()
-        res_df = self._results_df.loc[:, ['S', 'GAMMA_C']]
-        return res_df.rename(columns=lambda x: x.replace("_C", ""))
-
-    def get_cmatrix(self):
-        """ Return the C-Matrix """
-        if 'C11' not in self._results_df:
-            self.calc_cmatrix()
-        return self._results_df.loc[:, ['S', 'C11', 'C12', 'C21', 'C22']]
 
     ################################
     #   Resonance Driving Terms
@@ -333,213 +310,9 @@ class TwissOptics(object):
     #   AC Dipole Driving Terms
     ################################
 
-    def calc_ac_dipole_driving_terms(self, order_or_terms, spectral_line, plane, ac_tunes, acd_name):
-        """ Calculates the Hamiltonian Terms under Forced Motion.
-        
-        Args:
-            order_or_terms: int, string or list of strings
-                If an int is given all Resonance Driving Terms up to this order
-                will be calculated.
-                The strings are assumed to be the desired driving term names, e.g. "F1001"
-            spectral_line: tuple
-                Needed to determine what phase advance is needed before and
-                after AC dipole location, depends on detal+ and delta-.
-                Sample input: (2,-1)
-            plane: string
-                Either 'H' or 'V' to determine phase term of
-                AC dipole before and after ACD location.
-            ac_tunes: tuple
-                Contains horizontal and vertical AC dipole tunes, i.e. (0.302, 0.33)
-        """
-        if isinstance(order_or_terms, int):
-            rdt_list = get_all_rdts(order_or_terms)
-        elif not isinstance(order_or_terms, list):
-            rdt_list = [order_or_terms]
-        else:
-            rdt_list = order_or_terms
 
-        LOG.debug("Calculating RDTs: {:s}.".format(str(rdt_list)[1:-1]))
-        with timeit(lambda t:
-                    LOG.debug("  RDTs calculated in {:f}s".format(t))):
 
-            i2pi = 2j * np.pi
-            tw = self.twiss_df
-            LOG.debug('STARTING phase advance calculation...')
-            phs_adv = self.get_phase_adv()
-            LOG.debug('phase advance calculation done...')
-            res = self._results_df
 
-            for rdt in rdt_list:
-                if not len(rdt) == 5 and rdt[0].upper() == 'F':
-                    ValueError(f"'{rdt}' does not seem to be a valid RDT name.")
-
-                conj_rdt = ''.join(['F', rdt[2], rdt[1], rdt[4], rdt[3]])
-
-                if conj_rdt in self._results_df:
-                    res[rdt.upper()] = np.conjugate(self._results_df[conj_rdt])
-                else:
-                    j, k, l, m = int(rdt[1]), int(rdt[2]), int(rdt[3]), int(rdt[4])
-                    n = j + k + l + m
-
-                    if n < 2:
-                        ValueError(f"The RDT-order has to be >1 but was {n:d} for {rdt}")
-
-                    if (l + m) % 2 == 0:
-                        src = 'K' + str(n-1) + 'L'
-                        sign = -(1j ** (l+m))
-                    else:
-                        src = 'K' + str(n-1) + 'SL'
-                        sign = -(1j ** (l+m+1))
-
-                    if spectral_line[1] < 0:
-                        c, d = 0, abs(spectral_line[1])
-                    elif spectral_line[1] > 0:
-                        c, d = abs(spectral_line[1]), 0
-                    elif spectral_line[1] == 0:
-                        c, d = 0, 0
-                    
-                    qx_min = ac_tunes[0]-tw.Q1
-                    qy_min = ac_tunes[1]-tw.Q2
-                    qx_plus = ac_tunes[0]+tw.Q1
-                    qy_plus = ac_tunes[1]+tw.Q2
-                    
-                    if plane == 'H':
-                        if spectral_line[0] == (k-j+1):
-                            a, b = 0, 0 
-                        elif spectral_line[0] == -(k-j+1):
-                            a, b = j-1, k
-                        else:
-                            LOG.warning("Line of different order than main driving term")
-                        
-                        if spectral_line[1] == (m-l):
-                            c, d = 0, 0 
-                        elif spectral_line[1] == -(m-l):
-                            c, d = l, m
-                        else:
-                            LOG.warning("Line of different order than main driving term")
-                        
-                        acd_ph = np.exp(i2pi * (
-                                (k - j + 1 + a - b) * qx_min +
-                                (b - a) * qx_plus +
-                                (m - l + c - d) * qy_min +
-                                (d - c) * qy_plus
-                        ))
-                        # acd_ph = np.exp(i2pi*( (k-j+1)*Qx_min + (m-l)*Qy_min ))
-                        denom1 = 1./(factorial(j) * factorial(k) * factorial(l) * factorial(m) *
-                                     2**n)
-                        denom2 = 1./(1. - np.exp(-i2pi * (-tw.Q1 + spectral_line[0] * ac_tunes[0] +
-                                                          spectral_line[1] * ac_tunes[1]))
-                                     )
-                        # denom2 = 1./(1. - np.exp(i2pi * ((j-k)*tw.Q1 + (l-m)*tw.Q2 )))
-
-                    elif plane == 'V':
-                        if spectral_line[0] == (k-j):
-                            a, b = 0, 0 
-                        elif spectral_line[0] == -(k-j):
-                            a, b = j-1, k
-                        else:
-                            LOG.warning("Line of different order than main driving term")
-                        
-                        if spectral_line[1] == (m-l+1):
-                            a, b = 0, 0 
-                        elif spectral_line[1] == -(m-l+1):
-                            a, b = j-1, k
-                        else:
-                            LOG.warning("Line of different order than main driving term")
-                        
-                        acd_ph = np.exp(i2pi * (
-                                (k - j + a - b) * qx_min +
-                                (b - a) * qx_plus +
-                                (m - l + 1 + c - d) * qy_min +
-                                (d - c) * qy_plus
-                        ))
-                        denom1 = 1./(factorial(j) * factorial(k) * factorial(l) * factorial(m) *
-                                     2**n)
-                        denom2 = 1./(1. - np.exp(i2pi * (-tw.Q2 + spectral_line[0] * ac_tunes[0] +
-                                                         spectral_line[1] * ac_tunes[1]))
-                                     )
-
-                    try:
-                        mask_in = (tw[src] != 0) | (tw.index == acd_name)
-                        if sum(mask_in) == 0:
-                            raise KeyError
-                    except KeyError:
-                        # either src is not in tw or all k's are zero.
-                        LOG.warning("  All {:s} == 0. RDT '{:s}' will be zero.".format(src, rdt))
-                        res.loc[:, rdt.upper()] = 0
-                    else:
-                        # the next three lines determine the main order of speed, hence
-                        # - mask as much as possible
-                        # - additions are faster than multiplications (-> applymap last)
-                        phx = dphi(phs_adv['X'].loc[mask_in, :], tw.Q1)
-                        phy = dphi(phs_adv['Y'].loc[mask_in, :], tw.Q2)
-                        
-                        phs_acd = pd.DataFrame(columns=phs_adv['X'].loc[mask_in, :].columns,
-                                               index=phs_adv['X'].loc[mask_in, :].index)
-                        phs_acd[:] = acd_ph
-                        mk_acd = phs_adv['X'].loc[mask_in, :] > 0
-                        phs_acd.where(mk_acd, 1., inplace=True) 
-
-                        phase_term = ((j-k) * phx + (l-m) * phy).applymap(lambda p: np.exp(i2pi*p))
-                        total_phase_term = phase_term.multiply(phs_acd)
-
-                        beta_term = tw.loc[mask_in, src] * \
-                                    tw.loc[mask_in, 'BETX'] ** ((j+k) / 2.) * \
-                                    tw.loc[mask_in, 'BETY'] ** ((l+m) / 2.)
-                        
-                        res.loc[:, rdt.upper().replace('F','HAC')] = sign * total_phase_term.multiply(
-                            beta_term, axis="index").sum(axis=0).transpose() * denom1
-
-                        res.loc[:, rdt.upper().replace('F','FAC')] = sign * total_phase_term.multiply(
-                            beta_term, axis="index").sum(axis=0).transpose() * denom1 * denom2
-
-                        LOG.debug("  Average RDT amplitude |{:s}|: {:g}".format(rdt, np.mean(
-                            np.abs(res.loc[:, rdt.upper()]))))
-
-        self._log_added(*rdt_list)
-
-    def get_rdts(self, rdt_names=None):
-        """ Return Resonance Driving Terms. """
-        if rdt_names:
-            if not isinstance(rdt_names, list):
-                rdt_names = [rdt_names]
-            rdt_names = [rdt.upper() for rdt in rdt_names]
-            new_rdts = [rdt for rdt in rdt_names if rdt not in self._results_df]
-            if len(new_rdts) > 0:
-                self.calc_rdts(new_rdts)
-            return self._results_df.loc[:, ["S"] + rdt_names]
-        else:
-            return self._results_df.loc[:, self._results_df.columns.str.match(r'(S|F\d{4})$',
-                                                                              case=False)]
-
-    # def plot_rdts(self, rdt_names=None, apply_fun=np.abs, combined=True):
-    #     """ Plot Resonance Driving Terms """
-    #     LOG.debug("Plotting Resonance Driving Terms")
-    #     rdts = self.get_rdts(rdt_names)
-    #     is_s = rdts.columns.str.match(r'S$', case=False)
-    #     rdts = rdts.dropna()
-    #     rdts.loc[:, ~is_s] = rdts.loc[:, ~is_s].applymap(apply_fun)
-    #     pstyle.set_style(self._plot_options.style, self._plot_options.manual)
-    #
-    #     if combined:
-    #         ax = rdts.plot(x='S')
-    #         ax.set_title('Resonance Driving Terms')
-    #         pstyle.small_title(ax)
-    #         pstyle.set_name('Resonance Driving Terms', ax)
-    #         pstyle.set_yaxis_label(apply_fun.__name__, 'F_{{jklm}}', ax)
-    #         self._nice_axes(ax)
-    #     else:
-    #         for rdt in rdts.loc[:, ~is_s]:
-    #             ax = rdts.plot(x='S', y=rdt)
-    #             ax.set_title('Resonance Driving Term ' + rdt)
-    #             pstyle.small_title(ax)
-    #             pstyle.set_name('Resonance Driving Term ' + rdt, ax)
-    #             pstyle.set_yaxis_label(apply_fun.__name__, rdt, ax)
-    #             self._nice_axes(ax)
-
-    ################################
-    #      Linear Dispersion
-    ################################
 
     def calc_linear_dispersion(self):
         """ Calculate the Linear Disperion.
@@ -615,45 +388,7 @@ class TwissOptics(object):
                                                     np.mean(res['DY'])))
         self._log_added('DX', 'DY')
 
-    def get_linear_dispersion(self):
-        """ Return the Linear Dispersion.
 
-        Available after calc_linear_dispersion!
-        """
-        if "DX" not in self._results_df or "DY" not in self._results_df:
-            self.calc_linear_dispersion()
-        return self._results_df.loc[:, ["S", "DX", "DY"]]
-
-    # def plot_linear_dispersion(self, combined=True):
-    #     """ Plot the Linear Dispersion.
-    #
-    #     Available after calc_linear_dispersion!
-    #
-    #     Args:
-    #         combined (bool): If 'True' plots x and y into the same axes.
-    #     """
-    #     LOG.debug("Plotting Linear Dispersion")
-    #     lin_disp = self.get_linear_dispersion().dropna()
-    #     title = 'Linear Dispersion'
-    #     pstyle.set_style(self._plot_options.style, self._plot_options.manual)
-    #
-    #     if combined:
-    #         ax_dx = lin_disp.plot(x='S')
-    #         ax_dx.set_title(title)
-    #         pstyle.set_yaxis_label('dispersion', 'x,y', ax_dx)
-    #         ax_dy = ax_dx
-    #     else:
-    #         ax_dx = lin_disp.plot(x='S', y='DX')
-    #         ax_dx.set_title(title)
-    #         pstyle.set_yaxis_label('dispersion', 'x', ax_dx)
-    #
-    #         ax_dy = lin_disp.plot(x='S', y='DY')
-    #         ax_dy.set_title(title)
-    #         pstyle.set_yaxis_label('dispersion', 'y', ax_dy)
-    #
-    #     for ax in (ax_dx, ax_dy):
-    #         self._nice_axes(ax)
-    #         ax.legend()
 
     # helpers
     @staticmethod
@@ -800,43 +535,6 @@ class TwissOptics(object):
         if "DBEATX" not in self._results_df or "DBEATY" not in self._results_df:
             self.calc_chromatic_beating()
         return self._results_df.loc[:, ["S", "DBEATX", "DBEATY"]]
-
-    # def plot_chromatic_beating(self, combined=True):
-    #     """ Plot the Chromatic Beating
-    #
-    #     Available after calc_chromatic_beating
-    #
-    #     Args:
-    #         combined (bool): If 'True' plots x and y into the same axes.
-    #     """
-    #     LOG.debug("Plotting Chromatic Beating")
-    #     chrom_beat = self.get_chromatic_beating().dropna()
-    #     title = 'Chromatic Beating'
-    #     pstyle.set_style(self._plot_options.style, self._plot_options.manual)
-    #
-    #     if combined:
-    #         ax_dx = chrom_beat.plot(x='S')
-    #         ax_dx.set_title(title)
-    #         pstyle.small_title(ax_dx)
-    #         pstyle.set_name(title, ax_dx)
-    #         pstyle.set_yaxis_label('dbetabeat', 'x,y', ax_dx)
-    #         ax_dy = ax_dx
-    #     else:
-    #         ax_dx = chrom_beat.plot(x='S', y='DBEATX')
-    #         ax_dx.set_title(title)
-    #         pstyle.small_title(ax_dx)
-    #         pstyle.set_name(title, ax_dx)
-    #         pstyle.set_yaxis_label('dbetabeat', 'x', ax_dx)
-    #
-    #         ax_dy = chrom_beat.plot(x='S', y='DBEATY')
-    #         ax_dy.set_title(title)
-    #         pstyle.small_title(ax_dy)
-    #         pstyle.set_name(title, ax_dy)
-    #         pstyle.set_yaxis_label('dbetabeat', 'y', ax_dy)
-    #
-    #     for ax in (ax_dx, ax_dy):
-    #         self._nice_axes(ax)
-    #         ax.legend()
 
     @staticmethod
     def _chromatic_beating(chrom_term, tau, q):

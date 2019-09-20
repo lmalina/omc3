@@ -46,9 +46,7 @@ def correct(accel_opt, opt):
     # the model in accel_inst is modified later, so save nominal model here to variables
     nominal_model = _maybe_add_coupling_to_model(accel_inst.get_model_tfs(), optics_params)
     # apply filters to data
-    meas_dict = filters.filter_measurement(optics_params, meas_dict, nominal_model,
-                                           opt.use_errorbars,
-                                           opt.weights, opt.errorcut, opt.modelcut)
+    meas_dict = filters.filter_measurement(optics_params, meas_dict, nominal_model, opt)
     meas_dict = model_appenders.append_model_to_measurement(nominal_model, meas_dict, optics_params)
     resp_dict = filters.filter_response_index(resp_dict, meas_dict, optics_params)
     resp_matrix = _join_responses(resp_dict, optics_params, vars_list)
