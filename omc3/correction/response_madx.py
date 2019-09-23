@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import tfs
 import madx_wrapper
-from twiss_optics.optics_class import TwissOptics
+from correction import optics_class
 from utils import logging_tools, iotools
 from utils.contexts import timeit, suppress_warnings
 
@@ -198,8 +198,7 @@ def _add_coupling(dict_of_tfs):
     """ Adds coupling to the tfs. QUICK FIX VIA LOOP!"""
     with timeit(lambda t: LOG.debug(f"  Time adding coupling: {t} s")):
         for var in dict_of_tfs:
-            twopt = TwissOptics(dict_of_tfs[var])
-            cpl = twopt.get_coupling("cmatrix")
+            cpl = optics_class.get_coupling(dict_of_tfs[var])
             dict_of_tfs[var]["1001"] = cpl["F1001"]
             dict_of_tfs[var]["1010"] = cpl["F1010"]
         return dict_of_tfs

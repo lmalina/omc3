@@ -9,11 +9,10 @@ from sklearn.linear_model import OrthogonalMatchingPursuit
 
 import madx_wrapper
 import tfs
-from correction import response_twiss, filters, model_appenders
+from correction import filters, model_appenders, response_twiss, optics_class
 from correction.constants import DELTA, DIFF, WEIGHT, VALUE, ERROR
 from model import manager
 from optics_measurements.constants import EXT, PHASE_NAME, DISPERSION_NAME, NORM_DISP_NAME
-from twiss_optics.optics_class import TwissOptics
 from utils import logging_tools
 LOG = logging_tools.get_logger(__name__)
 
@@ -41,8 +40,8 @@ def correct(accel_opt, opt):
     if opt.fullresponse_path is not None:
         resp_dict = _load_fullresponse(opt.fullresponse_path, vars_list)
     else:
-        resp_dict = response_twiss.create_response(accel_inst, opt.variable_categories,
-                                                   optics_params)
+       resp_dict = response_twiss.create_response(accel_inst, opt.variable_categories,
+                                                  optics_params)
     # the model in accel_inst is modified later, so save nominal model here to variables
     nominal_model = _maybe_add_coupling_to_model(accel_inst.get_model_tfs(), optics_params)
     # apply filters to data
@@ -174,8 +173,7 @@ def _get_varlist(accel_cls, variables, virt_flag):  # TODO: Virtual?
 
 def _maybe_add_coupling_to_model(model, keys):
     if any([key for key in keys if key.startswith("F1")]):
-        tw_opt = TwissOptics(model)
-        couple = tw_opt.get_coupling(method="cmatrix")
+        couple = optics_class.get_coupling(model)
         model["F1001R"] = couple["F1001"].apply(np.real).astype(np.float64)
         model["F1001I"] = couple["F1001"].apply(np.imag).astype(np.float64)
         model["F1010R"] = couple["F1010"].apply(np.real).astype(np.float64)

@@ -31,14 +31,13 @@ Some hints:
 
     Don't look into the coupling and chromatic coupling namings.
 """
-import re
 import sys
-from os.path import join, isdir, exists, split
+from os.path import join, isdir
 import numpy as np
 import pandas as pd
 
 from optics_measurements.io_filehandler import OpticsMeasurement
-from twiss_optics.optics_class import TwissOptics
+from correction import optics_class
 import tfs
 from utils import logging_tools #, beta_star_from_twiss as bsft
 
@@ -81,8 +80,8 @@ def getdiff(meas_path=None, beta_file_name="beta_phase_"):
     meas = OpticsMeasurement(meas_path)
     twiss_cor = tfs.read(corrected_model_path).set_index('NAME', drop=False)
     twiss_no = tfs.read(uncorrected_model_path).set_index('NAME', drop=False)
-    coup_cor = TwissOptics(twiss_cor, quick_init=True).get_coupling(method='cmatrix')
-    coup_no = TwissOptics(twiss_no, quick_init=True).get_coupling(method='cmatrix')
+    coup_cor = optics_class.get_coupling(twiss_cor)
+    coup_no = optics_class.get_coupling(twiss_no)
     model = pd.merge(twiss_cor, twiss_no, how='inner', on='NAME', suffixes=('_c', '_n'))
     coupling_model = pd.merge(coup_cor, coup_no, how='inner', left_index=True, right_index=True,
                               suffixes=('_c', '_n'))
@@ -93,7 +92,7 @@ def getdiff(meas_path=None, beta_file_name="beta_phase_"):
         _write_phase_diff_file(meas_path, meas, model, plane)
         _write_disp_diff_file(meas_path, meas, model, plane)
         _write_closed_orbit_diff_file(meas_path, meas, model, plane)
-    #_write_coupling_diff_file(meas_path, meas, coupling_model)
+    _write_coupling_diff_file(meas_path, meas, coupling_model)
     _write_norm_disp_diff_file(meas_path, meas, model)
     #_write_chromatic_coupling_files(meas_path, corrected_model_path)
     #_write_betastar_diff_file(meas_path, meas, twiss_cor, twiss_no)
@@ -189,29 +188,29 @@ def _write_norm_disp_diff_file(meas_path, meas, model):
                   tw.loc[:, ['NAME', 'S', 'MEA', 'ERROR', 'MODEL', 'EXPECT']])
 
 
-# def _write_coupling_diff_file(meas_path, meas, model):
-#     LOG.debug("Calculating coupling diff.")
-#     tw = pd.merge(meas.coupling, model, how='inner', on='NAME')
-#     out_columns = ['NAME', 'S']
-#     for idx, rdt in enumerate(['F1001', 'F1010']):
-#         tw[rdt + 're'] = tw.loc[:, rdt + 'R']
-#         tw[rdt + 'im'] = tw.loc[:, rdt + 'I']
-#         tw[rdt + 'e'] = tw.loc[:, 'FWSTD{:d}'.format(idx + 1)]
-#         tw[rdt + 're_m'] = np.real(tw.loc[:, rdt + '_c'])
-#         tw[rdt + 'im_m'] = np.imag(tw.loc[:, rdt + '_c'])
-#         tw[rdt + 're_prediction'] = tw.loc[:, rdt + 're'] - tw.loc[:, rdt + 're_m']
-#         tw[rdt + 'im_prediction'] = tw.loc[:, rdt + 'im'] - tw.loc[:, rdt + 'im_m']
-#         tw[rdt + 'W_prediction'] = np.sqrt(np.square(tw[rdt + 're_prediction'])
-#                                            + np.square(tw[rdt + 'im_prediction']))
-#
-#         out_columns += [rdt + 're', rdt + 'im', rdt + 'e',
-#                         rdt + 're_m', rdt + 'im_m',
-#                         rdt + 'W', rdt + 'W_prediction',
-#                         rdt + 're_prediction', rdt + 'im_prediction']
-#
-#     tw['in_use'] = 1
-#     out_columns += ['in_use']
-#     tfs.write(join(meas_path, get_diff_filename('couple')), tw.loc[:, out_columns])
+def _write_coupling_diff_file(meas_path, meas, model):
+    LOG.debug("Calculating coupling diff.")
+    tw = pd.merge(meas.coupling, model, how='inner', on='NAME')
+    out_columns = ['NAME', 'S']
+    for idx, rdt in enumerate(['F1001', 'F1010']):
+        tw[rdt + 're'] = tw.loc[:, rdt + 'R']
+        tw[rdt + 'im'] = tw.loc[:, rdt + 'I']
+        tw[rdt + 'e'] = tw.loc[:, 'FWSTD{:d}'.format(idx + 1)]
+        tw[rdt + 're_m'] = np.real(tw.loc[:, rdt + '_c'])
+        tw[rdt + 'im_m'] = np.imag(tw.loc[:, rdt + '_c'])
+        tw[rdt + 're_prediction'] = tw.loc[:, rdt + 're'] - tw.loc[:, rdt + 're_m']
+        tw[rdt + 'im_prediction'] = tw.loc[:, rdt + 'im'] - tw.loc[:, rdt + 'im_m']
+        tw[rdt + 'W_prediction'] = np.sqrt(np.square(tw[rdt + 're_prediction'])
+                                           + np.square(tw[rdt + 'im_prediction']))
+
+        out_columns += [rdt + 're', rdt + 'im', rdt + 'e',
+                        rdt + 're_m', rdt + 'im_m',
+                        rdt + 'W', rdt + 'W_prediction',
+                        rdt + 're_prediction', rdt + 'im_prediction']
+
+    tw['in_use'] = 1
+    out_columns += ['in_use']
+    tfs.write(join(meas_path, get_diff_filename('couple')), tw.loc[:, out_columns])
 
 
 # def _write_chromatic_coupling_files(meas_path, cor_path):
@@ -224,8 +223,8 @@ def _write_norm_disp_diff_file(meas_path, meas, model):
 #         LOG.debug("Chromatic coupling measurements not found. Skipped.")
 #     else:
 #         deltap = np.abs(twiss_plus.DELTAP - twiss_min.DELTAP)
-#         plus = TwissOptics(twiss_plus, quick_init=True).get_coupling(method='cmatrix')
-#         minus = TwissOptics(twiss_min, quick_init=True).get_coupling(method='cmatrix')
+#         plus = optics_class.get_coupling(twiss_plus)
+#         minus = optics_class.get_coupling(twiss_min)
 #         model = pd.merge(plus, minus, how='inner', left_index=True, right_index=True,
 #                          suffixes=('_p', '_m'))
 #         model['NAME'] = model.index.values
@@ -335,9 +334,6 @@ def _write_norm_disp_diff_file(meas_path, meas, model):
 #
 #             tfs.write(join(meas_path, get_diff_filename('betastar')), tw,
 #                       save_index=bsft.RES_COLUMNS[0])
-
-
-# Script Mode ################################################################
 
 
 if __name__ == "__main__":

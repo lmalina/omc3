@@ -104,16 +104,15 @@ Also :math:`\Delta \Phi_{z,wj}` needs to be multiplied by :math:`2\pi` to be con
     https://doi.org/10.1103/PhysRevAccelBeams.20.054801
 
 """
+import pickle
 import numpy as np
 import pandas as pd
 import tfs
 from correction.sequence_evaluation import check_varmap_file
-from twiss_optics.twiss_functions import get_phase_advances, tau, dphi
-from twiss_optics.twiss_functions import upper
-from utils import logging_tools as logtool
+from utils import logging_tools
 from utils.contexts import timeit
-import pickle
-LOG = logtool.get_logger(__name__)
+
+LOG = logging_tools.get_logger(__name__)
 
 DUMMY_ID = "DUMMY_PLACEHOLDER"
 PLANES = ("X", "Y")
@@ -812,6 +811,48 @@ def dict_mul(number, dictionary):
         for key in dictionary:
             dictionary[key] = number * dictionary[key]
     return dictionary
+
+
+def upper(list_of_strings):
+    """ Set all items of list to uppercase """
+    return [item.upper() for item in list_of_strings]
+
+
+def get_phase_advances(twiss_df):
+    """
+    Calculate phase advances between all elements
+
+    Returns:
+        Matrices similar to DPhi(i,j) = Phi(j) - Phi(i)
+    """
+    LOG.debug("Calculating Phase Advances:")
+    phase_advance_dict = dict.fromkeys(['X', 'Y'])
+    with timeit(lambda t:
+                LOG.debug("  Phase Advances calculated in {:f}s".format(t))):
+        for plane in PLANES:
+            colmn_phase = "MU" + plane
+
+            phases_mdl = twiss_df.loc[twiss_df.index, colmn_phase]
+            # Same convention as in [1]: DAdv(i,j) = Phi(j) - Phi(i)
+            phase_advances = pd.DataFrame((phases_mdl[None, :] - phases_mdl[:, None]),
+                                          index=twiss_df.index,
+                                          columns=twiss_df.index)
+            # Do not calculate dphi and tau here.
+            # only slices of phase_advances as otherwise super slow
+            phase_advance_dict[plane] = phase_advances
+    return phase_advance_dict
+
+
+def dphi(data, q):
+    """ Return dphi from phase advances in data, see Eq. 8 in [#FranchiAnalyticformulasrapid2017]_
+    """
+    return data + np.where(data <= 0, q, 0)  # '<=' seems to be what MAD-X does
+
+
+def tau(data, q):
+    """ Return tau from phase advances in data, see Eq. 16 in [#FranchiAnalyticformulasrapid2017]_
+    """
+    return data + np.where(data <= 0, q / 2, -q / 2)  # '<=' seems to be what MAD-X does
 
 
 # Wrapper ##################################################################
