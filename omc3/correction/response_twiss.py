@@ -244,6 +244,7 @@ class TwissResponse(object):
     @staticmethod
     def _get_direction(accel_inst):
         """ Sign for the direction of the beam. """
+        # TODO use straight the beam_direction from accel class
         return 1 if accel_inst.get_beam() == 1 else -1
 
     def _get_output_elements(self, at_elements):

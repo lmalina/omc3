@@ -40,7 +40,8 @@ from optics_measurements.io_filehandler import OpticsMeasurement
 from correction import optics_class
 import tfs
 from utils import logging_tools #, beta_star_from_twiss as bsft
-
+from optics_measurements.constants import DELTA, ERR
+from optics_measurements.toolbox import df_rel_diff, df_diff
 LOG = logging_tools.get_logger(__name__)
 
 TWISS_CORRECTED = "twiss_cor.dat"
@@ -48,7 +49,17 @@ TWISS_NOT_CORRECTED = "twiss_no.dat"
 TWISS_CORRECTED_PLUS = "twiss_cor_dpp.dat"  # positive dpp
 TWISS_CORRECTED_MINUS = "twiss_cor_dpm.dat"  # negative dpp
 
+PLANES = ("X", "Y")
 
+MEA = "MEA"
+ERROR = "ERROR"
+MODEL = "MODEL"
+EXPECT = "EXPECT"
+
+CORR = "_c"
+NO = "_n"
+NAME = "NAME"
+S= "S"
 # Main invocation ############################################################
 
 
@@ -80,14 +91,14 @@ def getdiff(meas_path=None, beta_file_name="beta_phase_"):
     meas = OpticsMeasurement(meas_path)
     twiss_cor = tfs.read(corrected_model_path).set_index('NAME', drop=False)
     twiss_no = tfs.read(uncorrected_model_path).set_index('NAME', drop=False)
-    coup_cor = optics_class.get_coupling(twiss_cor)
-    coup_no = optics_class.get_coupling(twiss_no)
-    model = pd.merge(twiss_cor, twiss_no, how='inner', on='NAME', suffixes=('_c', '_n'))
+    coup_cor = optics_class.coupling_from_r_matrix(twiss_cor)
+    coup_no = optics_class.coupling_from_r_matrix(twiss_no)
+    model = pd.merge(twiss_cor, twiss_no, how='inner', on='NAME', suffixes=(CORR, NO))
     coupling_model = pd.merge(coup_cor, coup_no, how='inner', left_index=True, right_index=True,
-                              suffixes=('_c', '_n'))
+                              suffixes=(CORR, NO))
     coupling_model['NAME'] = coupling_model.index.values
 
-    for plane in ['x', 'y']:
+    for plane in PLANES:
         _write_betabeat_diff_file(meas_path, meas, model, plane, beta_file_name)
         _write_phase_diff_file(meas_path, meas, model, plane)
         _write_disp_diff_file(meas_path, meas, model, plane)
@@ -113,47 +124,39 @@ def _write_betabeat_diff_file(meas_path, meas, model, plane, betafile):
     else:
         raise KeyError("Unknown beta file name '{}'.".format(betafile))
 
-    up = plane.upper()
     tw = pd.merge(meas_beta, model, how='inner', on='NAME')
-    tw['MEA'] = ((tw.loc[:, 'BET' + up] - tw.loc[:, 'BET' + up + 'MDL'])
-                 / tw.loc[:, 'BET' + up + 'MDL'])
-    tw['ERROR'] = tw.loc[:, 'ERRBET' + up] / tw.loc[:, 'BET' + up + 'MDL']
-    tw['MODEL'] = ((tw.loc[:, 'BET' + up + '_c'] - tw.loc[:, 'BET' + up + '_n'])
-                   / tw.loc[:, 'BET' + up + '_n'])
-    tw['EXPECT'] = tw['MEA'] - tw['MODEL']
-    tfs.write(join(meas_path, get_diff_filename('bb' + plane)),
-              tw.loc[:, ['NAME', 'S', 'MEA', 'ERROR', 'MODEL', 'EXPECT']])
+    tw[MEA] = tw.loc[:, f"{DELTA}BET{plane}"].values
+    tw[ERROR] = tw.loc[:, f"{ERR}{DELTA}BET{plane}"].values
+    tw[MODEL] = df_rel_diff(tw, f"BET{plane}_c", f"BET{plane}_n")
+    tw[EXPECT] = df_diff(tw, MEA, MODEL)
+    tfs.write(join(meas_path, get_diff_filename('bb' + plane.lower())),
+              tw.loc[:, [NAME, S, MEA, ERROR, MODEL, EXPECT]])
 
 
 def _write_phase_diff_file(meas_path, meas, model, plane):
     LOG.debug("Calculating phase diff.")
-    up = plane.upper()
     tw = pd.merge(meas.phase[plane], model, how='inner', on='NAME')
-    tw['MEA'] = tw.loc[:, 'PHASE' + up]
-    tw['ERROR'] = tw.loc[:, 'STDPH' + up]
-    tw['MODEL'] = np.concatenate((np.diff(tw.loc[:, 'MU' + up + '_c']), np.array([0.0])))
-    tw['DIFF'] = tw.loc[:, 'PHASE' + up] - tw.loc[:, 'PH' + up + 'MDL']
-    tw['DIFF_MDL'] = tw.loc[:, 'MODEL'] - tw.loc[:, 'PH' + up + 'MDL']
-    tw['EXPECT'] = tw['DIFF'] - tw['DIFF_MDL']
-    tfs.write(join(meas_path, get_diff_filename('phase' + plane)),
-              tw.loc[tw.index[:-1],
-                     ['NAME', 'S', 'MEA', 'ERROR', 'MODEL', 'DIFF', 'DIFF_MDL', 'EXPECT']])
+    tw[MEA] = tw.loc[:, f"{DELTA}PHASE{plane}"].values
+    tw[ERROR] = tw.loc[:, f"{ERR}{DELTA}PHASE{plane}"].values
+    tw[MODEL] = np.concatenate((np.diff(df_diff(tw, f"MU{plane}{CORR}", f"MU{plane}{NO}")), np.array([0.0])))
+    tw[EXPECT] = df_diff(tw, MEA, MODEL)
+    tfs.write(join(meas_path, get_diff_filename('phase' + plane.lower())),
+              tw.loc[tw.index[:-1], [NAME, S, MEA, ERROR, MODEL, EXPECT]])
 
 
 def _write_disp_diff_file(meas_path, meas, model, plane):
     LOG.debug("Calculating dispersion diff.")
-    up = plane.upper()
     try:
         tw = pd.merge(meas.disp[plane], model, how='inner', on='NAME')
     except IOError:
         LOG.debug("Dispersion measurements not found. Skipped.")
     else:
-        tw['MEA'] = tw.loc[:, 'D' + up] - tw.loc[:, 'D' + up + 'MDL']
-        tw['ERROR'] = tw.loc[:, 'STDD' + up]
-        tw['MODEL'] = tw.loc[:, 'D' + up + '_c'] - tw.loc[:, 'D' + up + '_n']
-        tw['EXPECT'] = tw['MEA'] - tw['MODEL']
-        tfs.write(join(meas_path, get_diff_filename('d' + plane)),
-                  tw.loc[:, ['NAME', 'S', 'MEA', 'ERROR', 'MODEL', 'EXPECT']])
+        tw[MEA] = tw.loc[:, f"{DELTA}D{plane}"].values
+        tw[ERROR] = tw.loc[:, f"{ERR}{DELTA}D{plane}"].values
+        tw[MODEL] = df_diff(tw, f"D{plane}{CORR}", f"D{plane}{NO}")
+        tw[EXPECT] = df_diff(tw, MEA, MODEL)
+        tfs.write(join(meas_path, get_diff_filename('d' + plane.lower())),
+                  tw.loc[:, [NAME, S, MEA, ERROR, MODEL, EXPECT]])
 
 
 def _write_closed_orbit_diff_file(meas_path, meas, model, plane):
@@ -164,28 +167,28 @@ def _write_closed_orbit_diff_file(meas_path, meas, model, plane):
     except IOError:
         LOG.debug("Orbit measurements not found. Skipped.")
     else:
-        tw['MEA'] = tw.loc[:, up] - tw.loc[:, up + 'MDL']
-        tw['ERROR'] = tw.loc[:, 'STD' + up]
-        tw['MODEL'] = (tw.loc[:, up + '_c'] - tw.loc[:, up + '_n']) * 1000
-        tw['EXPECT'] = tw['MEA'] - tw['MODEL'] * 1000
-        tfs.write(join(meas_path, get_diff_filename('co' + plane)),
-                  tw.loc[:, ['NAME', 'S', 'MEA', 'ERROR', 'MODEL', 'EXPECT']])
+        tw[MEA] = tw.loc[:, f"{DELTA}{plane}"].values
+        tw[ERROR] = tw.loc[:, f"{ERR}{DELTA}{plane}"].values
+        tw[MODEL] = df_diff(tw, f"{plane}{CORR}", f"{plane}{NO}")
+        tw[EXPECT] = df_diff(tw, MEA, MODEL)
+        tfs.write(join(meas_path, get_diff_filename('co' + plane.lower())),
+                  tw.loc[:, [NAME, S, MEA, ERROR, MODEL, EXPECT]])
 
 
-def _write_norm_disp_diff_file(meas_path, meas, model):
+def _write_norm_disp_diff_file(meas_path, meas, model, plane="X"):
     LOG.debug("Calculating normalized dispersion diff.")
     try:
         tw = pd.merge(meas.norm_disp, model, how='inner', on='NAME')
     except IOError:
         LOG.debug("Normalized dispersion measurements not found. Skipped.")
     else:
-        tw['MEA'] = tw.loc[:, 'NDX'] - tw.loc[:, 'NDXMDL']
-        tw['ERROR'] = tw.loc[:, 'STDNDX']
-        tw['MODEL'] = (tw.loc[:, 'DX_c'] / np.sqrt(tw.loc[:, 'BETX_c'])
-                       - tw.loc[:, 'DX_n'] / np.sqrt(tw.loc[:, 'BETX_n']))
-        tw['EXPECT'] = tw['MEA'] - tw['MODEL']
+        tw[MEA] = tw.loc[:, f"{DELTA}ND{plane}"].values
+        tw[ERROR] = tw.loc[:, f"{ERR}{DELTA}ND{plane}"].values
+        tw[MODEL] = (tw.loc[:, f"D{plane}{CORR}"].values / np.sqrt(tw.loc[:, f"BET{plane}{CORR}"].values)
+                     - tw.loc[:, f"D{plane}{NO}"].values / np.sqrt(tw.loc[:, f"BET{plane}{NO}"].values))
+        tw[EXPECT] = df_diff(tw, MEA, MODEL)
         tfs.write(join(meas_path, get_diff_filename('ndx')),
-                  tw.loc[:, ['NAME', 'S', 'MEA', 'ERROR', 'MODEL', 'EXPECT']])
+                  tw.loc[:, [NAME, S, MEA, ERROR, MODEL, EXPECT]])
 
 
 def _write_coupling_diff_file(meas_path, meas, model):

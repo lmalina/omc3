@@ -173,7 +173,7 @@ def _get_varlist(accel_cls, variables, virt_flag):  # TODO: Virtual?
 
 def _maybe_add_coupling_to_model(model, keys):
     if any([key for key in keys if key.startswith("F1")]):
-        couple = optics_class.get_coupling(model)
+        couple = optics_class.coupling_from_r_matrix(model)
         model["F1001R"] = couple["F1001"].apply(np.real).astype(np.float64)
         model["F1001I"] = couple["F1001"].apply(np.imag).astype(np.float64)
         model["F1010R"] = couple["F1010"].apply(np.real).astype(np.float64)

@@ -198,7 +198,7 @@ def _add_coupling(dict_of_tfs):
     """ Adds coupling to the tfs. QUICK FIX VIA LOOP!"""
     with timeit(lambda t: LOG.debug(f"  Time adding coupling: {t} s")):
         for var in dict_of_tfs:
-            cpl = optics_class.get_coupling(dict_of_tfs[var])
+            cpl = optics_class.coupling_from_r_matrix(dict_of_tfs[var])
             dict_of_tfs[var]["1001"] = cpl["F1001"]
             dict_of_tfs[var]["1010"] = cpl["F1010"]
         return dict_of_tfs
